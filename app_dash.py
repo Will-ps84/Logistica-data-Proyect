@@ -1,69 +1,65 @@
+# app_dash.py
+import os
 import pandas as pd
 from dash import Dash, dcc, html
 import plotly.express as px
 
-# Cargar datos
-df = pd.read_csv("data/ventas.csv")
+# ====== Configuración de la app ======
+app = Dash(__name__)
+app.title = "Dashboard Logística"
+
+# ====== Leer dataset ======
+# Usar variable de entorno para la ruta del CSV, default local
+dataset_path = os.getenv("DATA_PATH", "data/ventas.csv")
+df = pd.read_csv(dataset_path)
+
+# ====== Calcular KPIs ======
 df["VentaTotal"] = df["Cantidad"] * df["PrecioUnitario"]
 
-# Crear la app Dash
-app = Dash(__name__)
-app.title = "Logística Data Project"
+ventas_totales = df["VentaTotal"].sum()
+cantidad_total = df["Cantidad"].sum()
+ticket_promedio = df["VentaTotal"].mean()
+producto_mas_vendido = df.groupby("Producto")["Cantidad"].sum().idxmax()
+cliente_top = df.groupby("Cliente")["VentaTotal"].sum().idxmax()
 
-# Gráficos con Plotly
-fig_ventas_producto = px.bar(df.groupby("Producto")["Cantidad"].sum().reset_index(),
-                             x="Producto", y="Cantidad", title="Ventas por Producto")
+# ====== Gráficos ======
+# Top 5 productos por cantidad
+top_productos = df.groupby("Producto")["Cantidad"].sum().sort_values(ascending=False).head(5)
+fig_productos = px.bar(top_productos, x=top_productos.index, y=top_productos.values,
+                       labels={"x":"Producto", "y":"Cantidad"},
+                       title="Top 5 Productos Vendidos")
 
-fig_ventas_cliente = px.bar(df.groupby("Cliente")["VentaTotal"].sum().reset_index().sort_values(by="VentaTotal", ascending=False).head(10),
-                            x="Cliente", y="VentaTotal", title="Top 10 Clientes por Ventas")
-
-fig_ventas_tiempo = px.line(df.groupby("Fecha")["VentaTotal"].sum().reset_index(),
-                            x="Fecha", y="VentaTotal", title="Tendencia de Ventas Diarias")
-
-# Layout
+# ====== Layout ======
 app.layout = html.Div([
-    html.H1("📊 Logística Data Project", style={'textAlign': 'center'}),
-    
+    html.H1("Dashboard Logística", style={"textAlign": "center"}),
+
     html.Div([
         html.Div([
             html.H3("Ventas Totales"),
-            html.P(f"S/ {df['VentaTotal'].sum():,.2f}")
-        ], style={'width': '30%', 'display':'inline-block'}),
-        
+            html.P(f"S/. {ventas_totales:,.2f}")
+        ], className="kpi"),
         html.Div([
-            html.H3("Cantidad Total Vendida"),
-            html.P(f"{df['Cantidad'].sum()}")
-        ], style={'width': '30%', 'display':'inline-block'}),
-        
+            html.H3("Cantidad Total"),
+            html.P(f"{cantidad_total}")
+        ], className="kpi"),
         html.Div([
             html.H3("Ticket Promedio"),
-            html.P(f"S/ {df['VentaTotal'].mean():,.2f}")
-        ], style={'width': '30%', 'display':'inline-block'})
-    ], style={'textAlign': 'center'}),
+            html.P(f"S/. {ticket_promedio:,.2f}")
+        ], className="kpi"),
+        html.Div([
+            html.H3("Producto Más Vendido"),
+            html.P(f"{producto_mas_vendido}")
+        ], className="kpi"),
+        html.Div([
+            html.H3("Cliente Top"),
+            html.P(f"{cliente_top}")
+        ], className="kpi"),
+    ], style={"display": "flex", "justifyContent": "space-around", "marginBottom": "50px"}),
 
-    html.Hr(),
-
-    dcc.Graph(figure=fig_ventas_producto),
-    dcc.Graph(figure=fig_ventas_cliente),
-    dcc.Graph(figure=fig_ventas_tiempo)
+    dcc.Graph(figure=fig_productos)
 ])
 
-# Ejecutar servidor
-if __name__ == '__main__':
-    app.run(debug=True)
-import os
-from dash import Dash
-import dash_core_components as dcc
-import dash_html_components as html
-
-app = Dash(__name__)
-
-app.layout = html.Div([
-    html.H1("Dashboard Logística"),
-    # tus gráficos y KPIs aquí
-])
-
+# ====== Run server ======
 if __name__ == "__main__":
-    # Obtener puerto asignado por Render
-    port = int(os.environ.get("PORT", 8050))  # usa 8050 por defecto local
+    port = int(os.environ.get("PORT", 8050))  # Render asigna PORT
     app.run(host="0.0.0.0", port=port)
