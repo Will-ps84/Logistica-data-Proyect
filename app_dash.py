@@ -51,3 +51,19 @@ app.layout = html.Div([
 # Ejecutar servidor
 if __name__ == '__main__':
     app.run(debug=True)
+import os
+from dash import Dash
+import dash_core_components as dcc
+import dash_html_components as html
+
+app = Dash(__name__)
+
+app.layout = html.Div([
+    html.H1("Dashboard Logística"),
+    # tus gráficos y KPIs aquí
+])
+
+if __name__ == "__main__":
+    # Obtener puerto asignado por Render
+    port = int(os.environ.get("PORT", 8050))  # usa 8050 por defecto local
+    app.run(host="0.0.0.0", port=port)
