@@ -96,4 +96,6 @@ def update_graphs(clientes, productos, start_date, end_date):
 # Puerto dinámico para Render
 port = int(os.environ.get("PORT", 8050))
 if __name__ == "__main__":
-    app.run(port=port)
+    import os
+    port = int(os.environ.get("PORT", 10000))  # Render asigna el puerto dinámicamente
+    app.run_server(debug=True, host="0.0.0.0", port=port)
