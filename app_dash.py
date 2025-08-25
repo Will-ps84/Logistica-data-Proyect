@@ -1,69 +1,81 @@
+# app_dash.py
 import pandas as pd
 import plotly.express as px
-from dash import Dash, dcc, html
+from dash import Dash, html, dcc
+import dash_bootstrap_components as dbc
 import os
 
-# Cargar dataset
+# --- Cargar dataset ---
 df = pd.read_csv("data/ventas.csv")
-
-# Crear columna de Venta Total
+df["Fecha"] = pd.to_datetime(df["Fecha"])
 df["VentaTotal"] = df["Cantidad"] * df["PrecioUnitario"]
 
-# Preparar indicadores
+# --- KPIs ---
 total_ventas = df["VentaTotal"].sum()
-promedio_venta = df["VentaTotal"].mean()
-max_venta = df["VentaTotal"].max()
-min_venta = df["VentaTotal"].min()
+promedio_ventas = df["VentaTotal"].mean()
+venta_max = df["VentaTotal"].max()
+venta_min = df["VentaTotal"].min()
 
-# Ventas por cliente
+# --- Ventas por cliente ---
 ventas_cliente = df.groupby("Cliente")["VentaTotal"].sum().reset_index()
+cliente_top = ventas_cliente.loc[ventas_cliente["VentaTotal"].idxmax(), "Cliente"]
 
-# Ventas mes a mes
-df["Fecha"] = pd.to_datetime(df["Fecha"])
-ventas_mes = df.groupby(df["Fecha"].dt.to_period("M"))["VentaTotal"].sum().reset_index()
-ventas_mes["Fecha"] = ventas_mes["Fecha"].dt.to_timestamp()
+# --- Ventas mes a mes ---
+df["AñoMes"] = df["Fecha"].dt.to_period("M")
+ventas_mes = df.groupby("AñoMes")["VentaTotal"].sum().reset_index()
+ventas_mes["AñoMes"] = ventas_mes["AñoMes"].dt.to_timestamp()
 
-# Gráfico ventas mensuales
-fig_mes = px.bar(ventas_mes, x="Fecha", y="VentaTotal", title="Ventas Mes a Mes")
+# --- Gráficos ---
+fig_ventas_mes = px.bar(
+    ventas_mes, x="AñoMes", y="VentaTotal",
+    title="Ventas Mensuales",
+    text="VentaTotal"
+)
+fig_ventas_mes.update_layout(yaxis_title="Soles", xaxis_title="Mes")
 
-# Gráfico ventas por cliente
-fig_cliente = px.bar(ventas_cliente, x="Cliente", y="VentaTotal", title="Ventas por Cliente")
+fig_ventas_cliente = px.bar(
+    ventas_cliente, x="Cliente", y="VentaTotal",
+    title="Ventas por Cliente",
+    text="VentaTotal"
+)
 
-# Inicializar app
-app = Dash(__name__)
+# --- Dash App ---
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-# Layout
-app.layout = html.Div(children=[
-    html.H1("Dashboard de Ventas", style={"textAlign": "center"}),
+app.layout = dbc.Container([
+    html.H1("Dashboard Logística", className="text-center mt-3"),
     
-    html.Div([
-        html.Div([
-            html.H3("Total Ventas"),
-            html.P(f"S/. {total_ventas:,.2f}")
-        ], style={"width": "24%", "display": "inline-block", "textAlign": "center", "border": "1px solid #ccc", "padding": "10px"}),
-        
-        html.Div([
-            html.H3("Promedio Venta"),
-            html.P(f"S/. {promedio_venta:,.2f}")
-        ], style={"width": "24%", "display": "inline-block", "textAlign": "center", "border": "1px solid #ccc", "padding": "10px"}),
-        
-        html.Div([
-            html.H3("Máxima Venta"),
-            html.P(f"S/. {max_venta:,.2f}")
-        ], style={"width": "24%", "display": "inline-block", "textAlign": "center", "border": "1px solid #ccc", "padding": "10px"}),
-        
-        html.Div([
-            html.H3("Mínima Venta"),
-            html.P(f"S/. {min_venta:,.2f}")
-        ], style={"width": "24%", "display": "inline-block", "textAlign": "center", "border": "1px solid #ccc", "padding": "10px"}),
-    ], style={"display": "flex", "justifyContent": "space-around", "marginBottom": "30px"}),
+    # KPIs
+    dbc.Row([
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Ventas Totales"),
+            dbc.CardBody(html.H4(f"S/. {total_ventas:,.2f}"))
+        ], color="primary", inverse=True)),
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Promedio por Venta"),
+            dbc.CardBody(html.H4(f"S/. {promedio_ventas:,.2f}"))
+        ], color="info", inverse=True)),
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Venta Máxima"),
+            dbc.CardBody(html.H4(f"S/. {venta_max:,.2f}"))
+        ], color="success", inverse=True)),
+        dbc.Col(dbc.Card([
+            dbc.CardHeader("Venta Mínima"),
+            dbc.CardBody(html.H4(f"S/. {venta_min:,.2f}"))
+        ], color="warning", inverse=True)),
+    ], className="mb-4"),
     
-    dcc.Graph(figure=fig_mes),
-    dcc.Graph(figure=fig_cliente)
-])
+    # Gráficos
+    dbc.Row([
+        dbc.Col(dcc.Graph(figure=fig_ventas_mes), md=6),
+        dbc.Col(dcc.Graph(figure=fig_ventas_cliente), md=6),
+    ]),
+    
+    html.Hr(),
+    html.P(f"Cliente con mayores ventas: {cliente_top}", className="text-center")
+], fluid=True)
 
-# Puerto dinámico para Render
-port = int(os.environ.get("PORT", 8050))
-
+# --- Ejecutar ---
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8050))
     app.run(debug=True, host="0.0.0.0", port=port)
