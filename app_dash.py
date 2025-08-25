@@ -1,81 +1,120 @@
-# app_dash.py
 import pandas as pd
-import plotly.express as px
-from dash import Dash, html, dcc
+import dash
+from dash import html, dcc, dash_table
 import dash_bootstrap_components as dbc
+import plotly.express as px
 import os
 
-# --- Cargar dataset ---
+# ---------------------
+# Cargar datos
+# ---------------------
 df = pd.read_csv("data/ventas.csv")
+
+# Convertir columna Fecha a datetime
 df["Fecha"] = pd.to_datetime(df["Fecha"])
+
+# Extraer mes y año para filtros
+df["Mes"] = df["Fecha"].dt.strftime("%Y-%m")
+
+# Crear columna VentaTotal
 df["VentaTotal"] = df["Cantidad"] * df["PrecioUnitario"]
 
-# --- KPIs ---
-total_ventas = df["VentaTotal"].sum()
-promedio_ventas = df["VentaTotal"].mean()
-venta_max = df["VentaTotal"].max()
-venta_min = df["VentaTotal"].min()
+# ---------------------
+# Inicializar app
+# ---------------------
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
+server = app.server  # para Render
 
-# --- Ventas por cliente ---
-ventas_cliente = df.groupby("Cliente")["VentaTotal"].sum().reset_index()
-cliente_top = ventas_cliente.loc[ventas_cliente["VentaTotal"].idxmax(), "Cliente"]
-
-# --- Ventas mes a mes ---
-df["AñoMes"] = df["Fecha"].dt.to_period("M")
-ventas_mes = df.groupby("AñoMes")["VentaTotal"].sum().reset_index()
-ventas_mes["AñoMes"] = ventas_mes["AñoMes"].dt.to_timestamp()
-
-# --- Gráficos ---
-fig_ventas_mes = px.bar(
-    ventas_mes, x="AñoMes", y="VentaTotal",
-    title="Ventas Mensuales",
-    text="VentaTotal"
-)
-fig_ventas_mes.update_layout(yaxis_title="Soles", xaxis_title="Mes")
-
-fig_ventas_cliente = px.bar(
-    ventas_cliente, x="Cliente", y="VentaTotal",
-    title="Ventas por Cliente",
-    text="VentaTotal"
-)
-
-# --- Dash App ---
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
+# ---------------------
+# Layout
+# ---------------------
 app.layout = dbc.Container([
-    html.H1("Dashboard Logística", className="text-center mt-3"),
-    
-    # KPIs
     dbc.Row([
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Ventas Totales"),
-            dbc.CardBody(html.H4(f"S/. {total_ventas:,.2f}"))
-        ], color="primary", inverse=True)),
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Promedio por Venta"),
-            dbc.CardBody(html.H4(f"S/. {promedio_ventas:,.2f}"))
-        ], color="info", inverse=True)),
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Venta Máxima"),
-            dbc.CardBody(html.H4(f"S/. {venta_max:,.2f}"))
-        ], color="success", inverse=True)),
-        dbc.Col(dbc.Card([
-            dbc.CardHeader("Venta Mínima"),
-            dbc.CardBody(html.H4(f"S/. {venta_min:,.2f}"))
-        ], color="warning", inverse=True)),
-    ], className="mb-4"),
-    
-    # Gráficos
-    dbc.Row([
-        dbc.Col(dcc.Graph(figure=fig_ventas_mes), md=6),
-        dbc.Col(dcc.Graph(figure=fig_ventas_cliente), md=6),
+        dbc.Col(html.H1("Dashboard de Ventas", className="text-center text-primary mb-4"), width=12)
     ]),
     
-    html.Hr(),
-    html.P(f"Cliente con mayores ventas: {cliente_top}", className="text-center")
+    dbc.Row([
+        dbc.Col([
+            html.Label("Selecciona Cliente:"),
+            dcc.Dropdown(
+                id='filtro-cliente',
+                options=[{'label': c, 'value': c} for c in sorted(df["Cliente"].unique())],
+                value=None,
+                placeholder="Todos los clientes"
+            ),
+        ], width=6),
+        dbc.Col([
+            html.Label("Selecciona Mes:"),
+            dcc.Dropdown(
+                id='filtro-mes',
+                options=[{'label': m, 'value': m} for m in sorted(df["Mes"].unique())],
+                value=None,
+                placeholder="Todos los meses"
+            ),
+        ], width=6)
+    ], className="mb-4"),
+
+    dbc.Row([
+        dbc.Col(dcc.Graph(id='grafico-ventas-mes'), width=6),
+        dbc.Col(dcc.Graph(id='grafico-ventas-cliente'), width=6)
+    ]),
+
+    dbc.Row([
+        dbc.Col([
+            html.H4("Listado de clientes y ventas totales", className="mt-4"),
+            dash_table.DataTable(
+                id='tabla-clientes',
+                columns=[
+                    {"name": "Cliente", "id": "Cliente"},
+                    {"name": "Total Ventas", "id": "VentaTotal"}
+                ],
+                data=[],
+                style_table={'overflowX': 'auto'},
+                style_cell={'textAlign': 'center'},
+                page_size=10
+            )
+        ], width=12)
+    ])
 ], fluid=True)
 
-# --- Ejecutar ---
+# ---------------------
+# Callbacks
+# ---------------------
+@app.callback(
+    [
+        dash.dependencies.Output('grafico-ventas-mes', 'figure'),
+        dash.dependencies.Output('grafico-ventas-cliente', 'figure'),
+        dash.dependencies.Output('tabla-clientes', 'data')
+    ],
+    [
+        dash.dependencies.Input('filtro-cliente', 'value'),
+        dash.dependencies.Input('filtro-mes', 'value')
+    ]
+)
+def actualizar_dashboard(cliente_seleccionado, mes_seleccionado):
+    dff = df.copy()
+    
+    if cliente_seleccionado:
+        dff = dff[dff["Cliente"] == cliente_seleccionado]
+    if mes_seleccionado:
+        dff = dff[dff["Mes"] == mes_seleccionado]
+    
+    # Ventas por mes
+    ventas_mes = dff.groupby("Mes")["VentaTotal"].sum().reset_index()
+    fig_mes = px.bar(ventas_mes, x="Mes", y="VentaTotal", text="VentaTotal", title="Ventas por Mes")
+    
+    # Ventas por cliente
+    ventas_cliente = dff.groupby("Cliente")["VentaTotal"].sum().reset_index()
+    fig_cliente = px.pie(ventas_cliente, names="Cliente", values="VentaTotal", title="Ventas por Cliente")
+    
+    # Tabla clientes
+    tabla_data = ventas_cliente.to_dict('records')
+    
+    return fig_mes, fig_cliente, tabla_data
+
+# ---------------------
+# Run server
+# ---------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8050))
     app.run(debug=True, host="0.0.0.0", port=port)
